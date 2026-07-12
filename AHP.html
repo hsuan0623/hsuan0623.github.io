@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<title>AHP 最佳橋型決策系統</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+<div class="container py-5">
+
+  <!-- STEP 1 -->
+  <div id="step1">
+    <h1 class="text-center mb-4">最佳橋型決策系統 (AHP)</h1>
+    <div class="bg-white p-4 rounded shadow-sm">
+      <h4 class="mb-3 text-primary">第一步：建立主準則與子準則</h4>
+      <p class="text-muted">您可以建立至多 3 個主準則，每個主準則可包含至多 5 個子準則。未填寫的欄位將自動忽略。</p>
+      <div class="row" id="mainCriteriaCards"></div>
+      <hr class="my-4">
+      <h4 class="mb-3 text-success">第二步：建立評估方案</h4>
+      <div class="row mb-4" id="alternativeInputs"></div>
+      <button type="button" class="btn btn-primary w-100 fs-5" onclick="goToCompare()">下一步：進行兩兩比較</button>
+    </div>
+  </div>
+
+  <!-- STEP 2 -->
+  <div id="step2" class="d-none">
+    <h2 class="mb-4">各階層重要程度兩兩比較</h2>
+    <div class="bg-white p-4 rounded shadow-sm" id="compareContainer"></div>
+    <div class="text-center mt-5">
+      <button type="button" class="btn btn-primary btn-lg px-5" onclick="calculateResult()">計算決策結果</button>
+    </div>
+  </div>
+
+  <!-- STEP 3 -->
+  <div id="step3" class="d-none">
+    <div class="bg-white p-5 rounded shadow" id="resultContainer"></div>
+  </div>
+
+</div>
+
+<script>
+const OPTIONS_IMPORTANCE = `
+  <option value="1">1 (同等重要)</option>
+  <option value="3">3 (較重要)</option>
+  <option value="5">5 (非常重要)</option>
+  <option value="1/3">1/3 (較不重要)</option>
+  <option value="1/5">1/5 (非常不重要)</option>`;
+
+const OPTIONS_ADVANTAGE = `
+  <option value="1">1 (同等優勢)</option>
+  <option value="3">3 (較優越)</option>
+  <option value="5">5 (非常優越)</option>
+  <option value="1/3">1/3 (較劣勢)</option>
+  <option value="1/5">1/5 (非常劣勢)</option>`;
+
+let state = { mainCriteria: [], hierarchyData: {}, alternatives: [] };
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function buildStep1Form() {
+  let cardsHtml = '';
+  for (let i = 1; i <= 3; i++) {
+    let subsHtml = '';
+    for (let j = 1; j <= 5; j++) {
+      subsHtml += `<input type="text" id="main_input_${i}_${j}" class="form-control mb-2 form-control-sm" placeholder="子準則 ${j}">`;
+    }
+    cardsHtml += `
+      <div class="col-md-4 mb-4">
+        <div class="card h-100">
+          <div class="card-header bg-secondary text-white fw-bold">主準則 ${i}</div>
+          <div class="card-body">
+            <input type="text" id="main_input_${i}" class="form-control mb-3" placeholder="請輸入主準則名稱">
+            ${subsHtml}
+          </div>
+        </div>
+      </div>`;
+  }
+  document.getElementById('mainCriteriaCards').innerHTML = cardsHtml;
+
+  let altsHtml = '';
+  for (let i = 1; i <= 5; i++) {
+    altsHtml += `<div class="col-md-2 mb-2"><input type="text" id="alt_input_${i}" class="form-control" placeholder="方案 ${i}"></div>`;
+  }
+  document.getElementById('alternativeInputs').innerHTML = altsHtml;
+}
+
+function parseValue(v) {
+  if (v.indexOf('/') !== -1) {
+    const parts = v.split('/');
+    return parseFloat(parts[0]) / parseFloat(parts[1]);
+  }
+  return parseFloat(v);
+}
+
+// 依照索引建立成對比較矩陣，並計算權重（幾何平均法）
+function calculateWeights(n, comps) {
+  if (n <= 1) return [1.0];
+  const matrix = [];
+  for (let i = 0; i < n; i++) matrix.push(new Array(n).fill(1.0));
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const val = parseValue((comps && comps[i + '_' + j]) || '1');
+      matrix[i][j] = val;
+      matrix[j][i] = 1.0 / val;
+    }
+  }
+  const geomMeans = [];
+  for (let i = 0; i < n; i++) {
+    let prod = 1.0;
+    for (let j = 0; j < n; j++) prod *= matrix[i][j];
+    geomMeans.push(Math.pow(prod, 1.0 / n));
+  }
+  const sum = geomMeans.reduce((a, b) => a + b, 0);
+  return geomMeans.map(g => g / sum);
+}
+
+function goToCompare() {
+  const mainCriteria = [];
+  const hierarchyData = {};
+  for (let i = 1; i <= 3; i++) {
+    const mName = (document.getElementById('main_input_' + i).value || '').trim();
+    if (mName) {
+      mainCriteria.push(mName);
+      const subs = [];
+      for (let j = 1; j <= 5; j++) {
+        const s = (document.getElementById('main_input_' + i + '_' + j).value || '').trim();
+        if (s) subs.push(s);
+      }
+      hierarchyData[mName] = subs.length ? subs : [mName + ' (整體)'];
+    }
+  }
+  let alternatives = [];
+  for (let i = 1; i <= 5; i++) {
+    const a = (document.getElementById('alt_input_' + i).value || '').trim();
+    if (a) alternatives.push(a);
+  }
+
+  if (mainCriteria.length === 0) {
+    mainCriteria.push('預設主準則');
+    hierarchyData['預設主準則'] = ['預設子準則'];
+  }
+  if (alternatives.length === 0) alternatives = ['預設方案 A'];
+
+  state.mainCriteria = mainCriteria;
+  state.hierarchyData = hierarchyData;
+  state.alternatives = alternatives;
+
+  renderComparePage();
+  document.getElementById('step1').classList.add('d-none');
+  document.getElementById('step2').classList.remove('d-none');
+}
+
+function compareRow(id, left, right, questionSuffix, options) {
+  return `
+    <div class="row align-items-center mb-2">
+      <div class="col-md-6 text-end">
+        當 <strong>【${escapeHtml(left)}】</strong> 與 <strong>【${escapeHtml(right)}】</strong> ${questionSuffix}
+      </div>
+      <div class="col-md-4">
+        <select id="${id}" class="form-select">${options}</select>
+      </div>
+    </div>`;
+}
+
+function renderComparePage() {
+  const { mainCriteria, hierarchyData, alternatives } = state;
+  let html = '';
+
+  if (mainCriteria.length > 1) {
+    html += '<h4 class="text-primary mb-3">主準則兩兩比較</h4><div class="mb-4">';
+    for (let i = 0; i < mainCriteria.length; i++) {
+      for (let j = i + 1; j < mainCriteria.length; j++) {
+        html += compareRow('main_' + i + '_' + j, mainCriteria[i], mainCriteria[j], '相較時，其重要性如何?', OPTIONS_IMPORTANCE);
+      }
+    }
+    html += '</div><hr>';
+  }
+
+  mainCriteria.forEach((m, mIdx) => {
+    const subs = hierarchyData[m];
+    if (subs.length > 1) {
+      html += `<h4 class="text-info mb-3">主準則【${escapeHtml(m)}】下的子準則比較</h4><div class="mb-4">`;
+      for (let i = 0; i < subs.length; i++) {
+        for (let j = i + 1; j < subs.length; j++) {
+          html += compareRow('sub_' + mIdx + '_' + i + '_' + j, subs[i], subs[j], '相較時，其重要性如何?', OPTIONS_IMPORTANCE);
+        }
+      }
+      html += '</div><hr>';
+    }
+  });
+
+  if (alternatives.length > 1) {
+    html += '<h4 class="text-success mb-3">方案兩兩比較</h4>';
+    let sIdx = 0;
+    mainCriteria.forEach((m) => {
+      hierarchyData[m].forEach((s) => {
+        html += `<h5 class="mt-4">針對子準則 <span class="badge bg-secondary">${escapeHtml(s)}</span> 的方案比較</h5>
+          <div class="mb-3 border-start border-3 border-success ps-3">`;
+        for (let i = 0; i < alternatives.length; i++) {
+          for (let j = i + 1; j < alternatives.length; j++) {
+            html += compareRow('alt_' + sIdx + '_' + i + '_' + j, alternatives[i], alternatives[j], '相較時，其優勢如何?', OPTIONS_ADVANTAGE);
+          }
+        }
+        html += '</div>';
+        sIdx++;
+      });
+    });
+  }
+
+  document.getElementById('compareContainer').innerHTML = html;
+}
+
+function getSelectValue(id) {
+  const el = document.getElementById(id);
+  return el ? el.value : '1';
+}
+
+function calculateResult() {
+  const { mainCriteria, hierarchyData, alternatives } = state;
+
+  const mainComps = {};
+  for (let i = 0; i < mainCriteria.length; i++) {
+    for (let j = i + 1; j < mainCriteria.length; j++) {
+      mainComps[i + '_' + j] = getSelectValue('main_' + i + '_' + j);
+    }
+  }
+  const mainW = calculateWeights(mainCriteria.length, mainComps);
+
+  const globalWeights = {};
+  const allSubs = [];
+  mainCriteria.forEach((m, mIdx) => {
+    const subs = hierarchyData[m];
+    const subComps = {};
+    for (let i = 0; i < subs.length; i++) {
+      for (let j = i + 1; j < subs.length; j++) {
+        subComps[i + '_' + j] = getSelectValue('sub_' + mIdx + '_' + i + '_' + j);
+      }
+    }
+    const subW = calculateWeights(subs.length, subComps);
+    subs.forEach((s, i) => {
+      allSubs.push(s);
+      globalWeights[s] = mainW[mIdx] * subW[i];
+    });
+  });
+
+  const finalScores = {};
+  const contributions = {};
+  alternatives.forEach(a => { finalScores[a] = 0.0; contributions[a] = {}; });
+
+  allSubs.forEach((s, sIdx) => {
+    const altComps = {};
+    for (let i = 0; i < alternatives.length; i++) {
+      for (let j = i + 1; j < alternatives.length; j++) {
+        altComps[i + '_' + j] = getSelectValue('alt_' + sIdx + '_' + i + '_' + j);
+      }
+    }
+    const altW = calculateWeights(alternatives.length, altComps);
+    alternatives.forEach((a, i) => {
+      const contrib = altW[i] * globalWeights[s];
+      finalScores[a] += contrib;
+      contributions[a][s] = contrib;
+    });
+  });
+
+  const sortedAlts = Object.entries(finalScores).sort((a, b) => b[1] - a[1]);
+  const bestAlt = sortedAlts.length ? sortedAlts[0][0] : null;
+  let bestReasons = [];
+  if (bestAlt) {
+    bestReasons = Object.entries(contributions[bestAlt]).sort((a, b) => b[1] - a[1]).slice(0, 2);
+  }
+
+  renderResultPage(sortedAlts, bestAlt, bestReasons);
+  document.getElementById('step2').classList.add('d-none');
+  document.getElementById('step3').classList.remove('d-none');
+}
+
+function renderResultPage(sortedAlts, bestAlt, bestReasons) {
+  let html = '<h1 class="text-center mb-4 text-primary">最佳方案決策結果</h1>';
+
+  if (bestAlt) {
+    html += `
+      <div class="alert alert-success text-center mb-5 border-success">
+        <h2 class="mb-0">🏆 分析後橋梁最佳方案應為 <strong>${escapeHtml(bestAlt)}</strong></h2>
+      </div>
+      <h4 class="text-dark mb-3">主要勝出原因（得分貢獻最高的兩項子準則）：</h4>
+      <ul class="list-group mb-5">`;
+    bestReasons.forEach(([sName, contrib]) => {
+      html += `
+        <li class="list-group-item list-group-item-info">
+          該方案在【<strong>${escapeHtml(sName)}</strong>】的評估中取得較高優勢
+          <span class="badge bg-success float-end mt-1">對總分貢獻: ${contrib.toFixed(4)}</span>
+        </li>`;
+    });
+    html += '</ul>';
+  }
+
+  html += `
+    <h4 class="mb-3 border-bottom pb-2">各方案總得分與排名</h4>
+    <table class="table table-hover mb-5">
+      <thead class="table-light"><tr><th>排名</th><th>方案名稱</th><th>總得分</th></tr></thead>
+      <tbody>`;
+  sortedAlts.forEach(([name, score], idx) => {
+    html += `
+      <tr class="${idx === 0 ? 'table-warning fw-bold' : ''}">
+        <td>第 ${idx + 1} 名</td><td>${escapeHtml(name)}</td><td>${score.toFixed(4)}</td>
+      </tr>`;
+  });
+  html += `
+      </tbody>
+    </table>
+    <div class="text-center"><a href="#" onclick="resetAll(); return false;" class="btn btn-outline-secondary px-4">重新評估</a></div>`;
+
+  document.getElementById('resultContainer').innerHTML = html;
+}
+
+function resetAll() {
+  document.getElementById('step3').classList.add('d-none');
+  document.getElementById('step1').classList.remove('d-none');
+  document.querySelectorAll('#step1 input').forEach(el => el.value = '');
+}
+
+buildStep1Form();
+</script>
+</body>
+</html>
