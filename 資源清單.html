@@ -124,8 +124,8 @@
 <body>
 
 <header>
-  <h1>主動出擊・我的大學行動清單</h1>
-  <p>勾選符號，最後可以下載你的專屬清單</p>
+  <h1>我的大學行動清單</h1>
+  <p>校園講者｜大學進行曲・從被當到書卷</p>
 </header>
 
 <div class="counter">
@@ -140,7 +140,7 @@
   <button class="btn btn-download" onclick="downloadImage()">下載我的清單</button>
 </div>
 
-<canvas id="resultCanvas" width="900" height="1400"></canvas>
+<canvas id="resultCanvas" width="1000" height="700"></canvas>
 
 <script>
 const items = [
@@ -149,6 +149,27 @@ const items = [
   "校內打工","補習班&家教","實習","系上活動","社團","大型活動","校外活動",
   "住宿資訊"
 ];
+
+// 「想了解」項目下載圖卡時顯示的註解，每個項目對應一個陣列，陣列每一格就是一行
+const itemNotes = {
+  "雙轉輔規範": ["🔍成大註冊組", "約九月初更新"],
+  "選課系統": ["🔍https://course.ncku.edu.tw/", "一定要看選課公告"],
+  "通識甜度涼度": ["🔍https://nckuhub.com/", "🔍https://www.facebook.com/groups/637099219647956/?locale=zh_TW", "Dcard🔍成功大學"],
+  "英文模組": ["🔍成大外語中心"],
+  "系網": ["🔍(自己系名)"],
+  "畢業門檻": ["系網中通常會有"],
+  "研究所資訊": ["系網中研究所組別介紹"],
+  "獎學金網站": ["🔍成大生輔組-獎學金申請"],
+  "競賽網站": ["🔍獎金獵人", "歷年系網公告獲獎的比賽"],
+  "校內打工": ["🔍成功大學-徵才公告", "🔍FB打工版"],
+  "補習班&家教": ["🔍FB家教版"],
+  "實習": ["有些系所會在期末公告暑期實習清單"],
+  "系上活動": ["系學會、球隊、營隊"],
+  "社團": ["🔍https://osa.ncku.edu.tw/p/412-1026-3157.php?Lang=zh-tw", "🔍https://sys.activity-osa.ncku.edu.tw/"],
+  "大型活動": ["登大人&CUL&單車節", "各系營隊外招"],
+  "校外活動": ["🔍"],
+  "住宿資訊": ["🔍https://housing-osa.ncku.edu.tw/", "🔍FB成大租屋"]
+};
 
 const state = {};
 
@@ -205,69 +226,116 @@ function resetAll(){
   render();
 }
 
-function wrapText(ctx, text, x, y, maxWidth, lineHeight){
+function wrapLinesInto(ctx, text, maxWidth, outArray){
+  if(text === ""){ outArray.push(""); return; }
   const chars = text.split("");
   let line = "";
-  let curY = y;
   for(let i=0;i<chars.length;i++){
     const test = line + chars[i];
     if(ctx.measureText(test).width > maxWidth && line !== ""){
-      ctx.fillText(line, x, curY);
+      outArray.push(line);
       line = chars[i];
-      curY += lineHeight;
     } else {
       line = test;
     }
   }
-  ctx.fillText(line, x, curY);
-  return curY + lineHeight;
+  if(line) outArray.push(line);
 }
 
 function downloadImage(){
+  const known = items.filter((t, idx)=> state["item_"+idx] && state["item_"+idx].known);
+  const want = items.filter((t, idx)=> state["item_"+idx] && state["item_"+idx].want);
+
   const canvas = document.getElementById("resultCanvas");
   const ctx = canvas.getContext("2d");
-  const W = canvas.width, H = canvas.height;
+
+  const W = 1000;
+  const marginX = 60;
+  const maxNoteWidth = W - marginX - 60;
+
+  const headerHeight = 150;
+  const knownLineHeight = 34;
+  const titleLineHeight = 32;
+  const noteLineHeight = 26;
+  const wantItemGap = 16;
+  const footerHeight = 60;
+
+  ctx.font = "18px sans-serif";
+  const wantData = want.map(text=>{
+    const notes = itemNotes[text] || ["在這裡填上說明文字"];
+    const wrappedLines = [];
+    notes.forEach(n=> wrapLinesInto(ctx, n, maxNoteWidth, wrappedLines));
+    return {text, lines: wrappedLines};
+  });
+
+  let contentHeight = 0;
+  if(known.length === 0 && want.length === 0){
+    contentHeight = 50;
+  } else {
+    if(known.length) contentHeight += 40 + known.length*knownLineHeight + 20;
+    if(wantData.length){
+      contentHeight += 40;
+      wantData.forEach(w=>{
+        contentHeight += titleLineHeight + w.lines.length*noteLineHeight + wantItemGap;
+      });
+    }
+  }
+
+  const H = headerHeight + contentHeight + footerHeight + 40;
+  canvas.width = W;
+  canvas.height = Math.max(H, 500);
 
   ctx.fillStyle = "#fdfaf6";
-  ctx.fillRect(0,0,W,H);
+  ctx.fillRect(0,0,canvas.width, canvas.height);
 
   ctx.fillStyle = "#2b2b2b";
   ctx.textAlign = "center";
   ctx.font = "bold 40px sans-serif";
-  ctx.fillText("我的大學行動清單", W/2, 70);
+  ctx.fillText("我的大學行動清單", W/2, 60);
   ctx.font = "20px sans-serif";
   ctx.fillStyle = "#888";
-  ctx.fillText("校園講者｜大學進行曲・從被當到書卷", W/2, 105);
+  ctx.fillText("校園講者｜大學進行曲・從被當到書卷", W/2, 95);
 
   ctx.textAlign = "left";
-  let y = 160;
-
-  const known = items.filter((t, idx)=> state["item_"+idx] && state["item_"+idx].known);
-  const want = items.filter((t, idx)=> state["item_"+idx] && state["item_"+idx].want);
-
-  ctx.font = "22px sans-serif";
+  let y = 150;
 
   if(known.length === 0 && want.length === 0){
+    ctx.font = "22px sans-serif";
     ctx.fillStyle = "#bbb";
-    ctx.fillText("（沒有勾選項目）", 50, y);
-    y += 36;
-  } else {
-    if(known.length){
-      ctx.fillStyle = "#2ec27e";
-      y = wrapText(ctx, "✅ " + known.join("、"), 50, y, W-100, 32);
-      y += 20;
-    }
-    if(want.length){
+    ctx.fillText("（沒有勾選項目）", marginX, y);
+  }
+
+  if(known.length){
+    ctx.font = "24px sans-serif";
+    ctx.fillStyle = "#2ec27e";
+    known.forEach(text=>{
+      ctx.fillText("✅ " + text, marginX, y);
+      y += knownLineHeight;
+    });
+    y += 20;
+  }
+
+  if(wantData.length){
+    wantData.forEach(w=>{
+      ctx.font = "bold 24px sans-serif";
       ctx.fillStyle = "#f4a300";
-      y = wrapText(ctx, "⭐ " + want.join("、"), 50, y, W-100, 32);
-      y += 20;
-    }
+      ctx.fillText("⭐ " + w.text, marginX, y);
+      y += titleLineHeight;
+
+      ctx.font = "18px sans-serif";
+      ctx.fillStyle = "#666";
+      w.lines.forEach(line=>{
+        ctx.fillText(line, marginX + 28, y);
+        y += noteLineHeight;
+      });
+      y += wantItemGap;
+    });
   }
 
   ctx.textAlign = "center";
   ctx.font = "16px sans-serif";
   ctx.fillStyle = "#aaa";
-  ctx.fillText("機會是留給準備好的人", W/2, H-40);
+  ctx.fillText("機會是留給準備好的人", W/2, canvas.height - 30);
 
   const link = document.createElement("a");
   link.download = "我的大學行動清單.png";
