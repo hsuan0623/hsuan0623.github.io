@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>我的大學行動清單</title>
+<style>
+  :root{
+    --pink:#ff6f91;
+    --blue:#4d8dff;
+    --bg:#fdfaf6;
+    --ink:#2b2b2b;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:"PingFang TC","Microsoft JhengHei",sans-serif;
+    background:var(--bg);
+    color:var(--ink);
+    padding:20px 16px 100px;
+  }
+  header{
+    text-align:center;
+    margin-bottom:20px;
+  }
+  header h1{
+    font-size:22px;
+    margin:0 0 4px;
+  }
+  header p{
+    font-size:13px;
+    color:#777;
+    margin:0;
+  }
+  .counter{
+    position:sticky;
+    top:0;
+    background:var(--bg);
+    padding:10px 0;
+    text-align:center;
+    font-size:16px;
+    font-weight:bold;
+    z-index:10;
+    border-bottom:1px solid #eee;
+  }
+  .counter span{
+    display:inline-block;
+    margin:0 10px;
+  }
+  #app{
+    margin-top:20px;
+  }
+  .item{
+    background:#fff;
+    border-radius:12px;
+    padding:10px 12px;
+    margin-bottom:8px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:8px;
+    box-shadow:0 1px 3px rgba(0,0,0,0.05);
+  }
+  .item-text{
+    font-size:14px;
+    flex:1;
+  }
+  .toggles{
+    display:flex;
+    gap:6px;
+    flex-shrink:0;
+  }
+  .toggle{
+    border:1px solid #ddd;
+    background:#fafafa;
+    border-radius:20px;
+    padding:6px 14px;
+    font-size:16px;
+    cursor:pointer;
+    user-select:none;
+    white-space:nowrap;
+    transition:all .15s;
+  }
+  .toggle.known.active{
+    background:#2ec27e;
+    border-color:#2ec27e;
+  }
+  .toggle.want.active{
+    background:#f4a300;
+    border-color:#f4a300;
+  }
+  .footer-bar{
+    position:fixed;
+    bottom:0;
+    left:0;
+    right:0;
+    background:#fff;
+    padding:12px 16px;
+    box-shadow:0 -2px 8px rgba(0,0,0,0.08);
+    display:flex;
+    gap:10px;
+  }
+  .btn{
+    flex:1;
+    border:none;
+    border-radius:24px;
+    padding:13px 0;
+    font-size:15px;
+    font-weight:bold;
+    cursor:pointer;
+  }
+  .btn-download{
+    background:linear-gradient(90deg,var(--pink),var(--blue));
+    color:#fff;
+  }
+  .btn-reset{
+    background:#eee;
+    color:#555;
+    flex:0 0 80px;
+  }
+  #resultCanvas{display:none;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>主動出擊・我的大學行動清單</h1>
+  <p>勾選符號，最後可以下載你的專屬清單</p>
+</header>
+
+<div class="counter">
+  <span>✅ <b id="knownCount">0</b></span>
+  <span>⭐ <b id="wantCount">0</b></span>
+</div>
+
+<div id="app"></div>
+
+<div class="footer-bar">
+  <button class="btn btn-reset" onclick="resetAll()">重來</button>
+  <button class="btn btn-download" onclick="downloadImage()">下載我的清單</button>
+</div>
+
+<canvas id="resultCanvas" width="900" height="1400"></canvas>
+
+<script>
+const items = [
+  "雙轉輔規範","選課系統","通識甜度涼度","英文模組","系網",
+  "畢業門檻","研究所資訊","獎學金網站","競賽網站",
+  "校內打工","補習班&家教","實習","系上活動","社團","大型活動","校外活動",
+  "住宿資訊"
+];
+
+const state = {};
+
+function render(){
+  const app = document.getElementById("app");
+  app.innerHTML = "";
+
+  items.forEach((text, idx)=>{
+    const id = "item_" + idx;
+    if(!state[id]) state[id] = {known:false, want:false, text};
+
+    const item = document.createElement("div");
+    item.className = "item";
+
+    const span = document.createElement("div");
+    span.className = "item-text";
+    span.textContent = text;
+
+    const toggles = document.createElement("div");
+    toggles.className = "toggles";
+
+    const knownBtn = document.createElement("div");
+    knownBtn.className = "toggle known" + (state[id].known ? " active":"");
+    knownBtn.textContent = "✅";
+    knownBtn.onclick = ()=>{ state[id].known = !state[id].known; render(); updateCount(); };
+
+    const wantBtn = document.createElement("div");
+    wantBtn.className = "toggle want" + (state[id].want ? " active":"");
+    wantBtn.textContent = "⭐";
+    wantBtn.onclick = ()=>{ state[id].want = !state[id].want; render(); updateCount(); };
+
+    toggles.appendChild(knownBtn);
+    toggles.appendChild(wantBtn);
+    item.appendChild(span);
+    item.appendChild(toggles);
+    app.appendChild(item);
+  });
+
+  updateCount();
+}
+
+function updateCount(){
+  let known=0, want=0;
+  Object.values(state).forEach(s=>{
+    if(s.known) known++;
+    if(s.want) want++;
+  });
+  document.getElementById("knownCount").textContent = known;
+  document.getElementById("wantCount").textContent = want;
+}
+
+function resetAll(){
+  Object.keys(state).forEach(k=>{ state[k].known=false; state[k].want=false; });
+  render();
+}
+
+function wrapText(ctx, text, x, y, maxWidth, lineHeight){
+  const chars = text.split("");
+  let line = "";
+  let curY = y;
+  for(let i=0;i<chars.length;i++){
+    const test = line + chars[i];
+    if(ctx.measureText(test).width > maxWidth && line !== ""){
+      ctx.fillText(line, x, curY);
+      line = chars[i];
+      curY += lineHeight;
+    } else {
+      line = test;
+    }
+  }
+  ctx.fillText(line, x, curY);
+  return curY + lineHeight;
+}
+
+function downloadImage(){
+  const canvas = document.getElementById("resultCanvas");
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width, H = canvas.height;
+
+  ctx.fillStyle = "#fdfaf6";
+  ctx.fillRect(0,0,W,H);
+
+  ctx.fillStyle = "#2b2b2b";
+  ctx.textAlign = "center";
+  ctx.font = "bold 40px sans-serif";
+  ctx.fillText("我的大學行動清單", W/2, 70);
+  ctx.font = "20px sans-serif";
+  ctx.fillStyle = "#888";
+  ctx.fillText("大學進行曲・從被當到書卷｜周家萱", W/2, 105);
+
+  ctx.textAlign = "left";
+  let y = 160;
+
+  const known = items.filter((t, idx)=> state["item_"+idx] && state["item_"+idx].known);
+  const want = items.filter((t, idx)=> state["item_"+idx] && state["item_"+idx].want);
+
+  ctx.font = "22px sans-serif";
+
+  if(known.length === 0 && want.length === 0){
+    ctx.fillStyle = "#bbb";
+    ctx.fillText("（沒有勾選項目）", 50, y);
+    y += 36;
+  } else {
+    if(known.length){
+      ctx.fillStyle = "#2ec27e";
+      y = wrapText(ctx, "✅ " + known.join("、"), 50, y, W-100, 32);
+      y += 20;
+    }
+    if(want.length){
+      ctx.fillStyle = "#f4a300";
+      y = wrapText(ctx, "⭐ " + want.join("、"), 50, y, W-100, 32);
+      y += 20;
+    }
+  }
+
+  ctx.textAlign = "center";
+  ctx.font = "16px sans-serif";
+  ctx.fillStyle = "#aaa";
+  ctx.fillText("機會是留給準備好的人", W/2, H-40);
+
+  const link = document.createElement("a");
+  link.download = "我的大學行動清單.png";
+  link.href = canvas.toDataURL("image/png");
+  link.click();
+}
+
+render();
+</script>
+
+</body>
+</html>
